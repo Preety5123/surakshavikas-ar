@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "SurakshaVikas AR",
+    "slug": "surakshavikas-ar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "android": { "package": "in.gov.jharkhand.surakshavikasar" },
+    "plugins": [["expo-camera", { "cameraPermission": "Allow SurakshaVikas AR to use camera for AR safety training." }]]
+  }
+}

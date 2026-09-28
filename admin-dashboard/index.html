@@ -1,0 +1,33 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SurakshaVikas AR — Admin Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>*{box-sizing:border-box}body{margin:0;font-family:system-ui;background:#F4F6FA;color:#111}header{background:#0B1F3A;color:#fff;padding:16px 24px;display:flex;justify-content:space-between;align-items:center}h1{margin:0;font-size:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding:16px}.card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 4px #0002}.card b{font-size:26px}.wrap{padding:0 16px 32px;display:grid;gap:16px;grid-template-columns:1fr}@media(min-width:900px){.wrap{grid-template-columns:1fr 1fr}}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}input,select,button{padding:12px;border-radius:10px;border:1px solid #ccc;font-size:15px}button{background:#F5820B;color:#fff;border:none;font-weight:800;cursor:pointer}button:active{opacity:.8}#login{max-width:360px;margin:60px auto;background:#fff;padding:28px;border-radius:16px}#dash{display:none}.pass{color:#0E7C3E;font-weight:800}.fail{color:#D92D20;font-weight:800}.filters{display:flex;gap:8;flex-wrap:wrap}</style></head><body>
+<header><h1>⛑️ SurakshaVikas AR — Compliance Dashboard</h1><span id="who"></span></header>
+<div id="login"><h2>Admin Login</h2><p>Demo: <b>admin / admin123</b></p><input id="u" placeholder="Username" style="width:100%;margin-bottom:8px"><input id="p" type="password" placeholder="Password" style="width:100%;margin-bottom:8px"><button onclick="login()" style="width:100%">Login</button></div>
+<div id="dash">
+<div class="grid" id="cards"></div>
+<div class="wrap">
+<div class="card"><h3>Module completion</h3><canvas id="ch1"></canvas></div>
+<div class="card"><h3>Sector-wise training</h3><canvas id="ch2"></canvas></div>
+<div class="card"><h3>Language usage</h3><canvas id="ch3"></canvas></div>
+<div class="card"><h3>🔍 Certificate verification</h3><input id="cid" placeholder="SVAR-123456"><button onclick="verify()">Verify</button><div id="vout" style="margin-top:10px"></div></div>
+</div>
+<div class="card" style="margin:0 16px 32px"><h3>Workers</h3><div class="filters">
+<select id="fSec" onchange="render()"><option value="">All sectors</option><option>Mining</option><option>Steel</option><option>Mica</option><option>Other</option></select>
+<select id="fMod" onchange="render()"><option value="">All modules</option><option value="fire">Fire</option><option value="gas">Gas</option></select>
+<select id="fSt" onchange="render()"><option value="">All status</option><option>Passed</option><option>Failed</option><option>Not started</option></select>
+</div><div style="overflow:auto"><table><thead><tr><th>Worker</th><th>Sector</th><th>Module</th><th>Score</th><th>Status</th><th>Certificate</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+</div>
+<script>
+let S=null;
+function login(){if(u.value==='admin'&&p.value==='admin123'){login.style.display='none';dash.style.display='block';who.textContent='Trainer • Govt. of Jharkhand';load();}else alert('Use admin / admin123');}
+async function load(){const r=await fetch('/api/stats');S=await r.json();
+cards.innerHTML=[['Total Workers',S.totalWorkers,'👷'],['Training Completed',S.completed,'✅'],['In Progress',S.inProgress,'⏳'],['Certificates Issued',S.certs,'📜'],['Avg Score',S.avgScore+'%','📊'],['Pass Rate',S.passRate+'%','🎯']].map(x=>`<div class=card><div>${x[2]} ${x[0]}</div><b>${x[1]}</b></div>`).join('');
+new Chart(ch1,{type:'bar',data:{labels:S.byModule.map(x=>x.module),datasets:[{label:'Attempts',data:S.byModule.map(x=>x.count)},{label:'Passed',data:S.byModule.map(x=>x.pass)}]}});
+new Chart(ch2,{type:'doughnut',data:{labels:S.bySector.map(x=>x.sector),datasets:[{data:S.bySector.map(x=>x.count)}]}});
+new Chart(ch3,{type:'pie',data:{labels:S.byLang.map(x=>x.lang),datasets:[{data:S.byLang.map(x=>x.count)}]}});
+render();}
+function render(){const fs=fSec.value,fm=fMod.value,fst=fSt.value;
+rows.innerHTML=S.workers.filter(w=>(!fs||w.sector===fs)&&(!fm||w.module===fm)&&(!fst||w.status===fst)).map(w=>`<tr><td>${w.name}<br><small>${w.workerId}</small></td><td>${w.sector}</td><td>${w.module}</td><td>${w.score}</td><td class="${w.status==='Passed'?'pass':w.status==='Failed'?'fail':''}">${w.status}</td><td>${w.cert}</td></tr>`).join('');}
+async function verify(){const id=cid.value.trim();const r=await fetch('/api/certificates/'+id);if(r.ok){const c=await r.json();vout.innerHTML=`<b class=pass>✅ VALID</b><br>Worker: ${c.workerName}<br>Module: ${c.moduleName}<br>Score: ${c.score}%<br>Date: ${new Date(c.issuedAt).toDateString()}`;}else vout.innerHTML='<b class=fail>❌ INVALID / NOT FOUND</b>';}
+</script></body></html>

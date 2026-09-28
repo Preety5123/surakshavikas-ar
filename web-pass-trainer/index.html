@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>SurakshaVikas — AR P.A.S.S. Trainer (Web)</title>
+<link rel="stylesheet" href="./css/style.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud">
+  <div id="modeBadge">🧪 SIMULATION — Training Only</div>
+  <div id="warn" class="hidden"><span id="warnText"></span></div>
+  <div id="hint">Choose a mode to begin.</div>
+  <div id="bars">
+    <label>🔥 Fire <progress id="health" max="1" value="1"></progress></label>
+    <label>📌 Pin <progress id="pinBar" max="1" value="0"></progress></label>
+    <label>🧯 Pressure <progress id="pressure" max="1" value="1"></progress></label>
+  </div>
+  <button id="squeeze" class="hidden">SQUEEZE<br>(HOLD)</button>
+  <button id="btnGyro" class="hidden small">📳 Enable gyro look</button>
+  <div id="debug" class="hidden"></div>
+</div>
+
+<div id="success" class="panel hidden">
+  <h2>✅ Fire Extinguished!</h2>
+  <p id="successMetrics"></p>
+  <button onclick="location.reload()">🔁 Train again</button>
+</div>
+<div id="fail" class="panel hidden">
+  <h2>❌ Out of pressure!</h2>
+  <p>The fire is still burning.<br>Replay to try again.</p>
+  <button onclick="location.reload()">🔁 Retry</button>
+</div>
+
+<div id="start">
+  <div class="card">
+    <h1>🧯 P.A.S.S. Trainer</h1>
+    <p><b>P</b>ull • <b>A</b>im • <b>S</b>queeze • <b>S</b>weep</p>
+    <p id="xrNote">Checking AR support…</p>
+    <button id="btnXR" class="hidden">📷 Enter AR (Android Chrome)</button>
+    <button id="btnSim">🧪 Simulation mode (any device)</button>
+    <p class="discl">⚠️ SIMULATION — Training Only. Follow approved workplace SOPs in real emergencies.</p>
+  </div>
+</div>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
