@@ -17,4 +17,5 @@
 #start button{display:block;width:100%;padding:16px;margin:8px 0;border:none;border-radius:12px;background:#0B1F3A;color:#fff;font-size:17px;font-weight:800}
 #btnXR{background:#0E7C3E !important}
 .discl{background:#FFF3CD;font-size:11px;padding:8px;border-radius:8px;margin-top:10px}
+#errbox{background:#2a0d0d;color:#ff8080;font-size:11px;padding:8px;border-radius:8px;margin-top:10px;text-align:left;white-space:pre-wrap;max-height:120px;overflow:auto}
 .hidden{display:none !important}

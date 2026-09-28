@@ -37,11 +37,16 @@ export class Extinguisher {
     this.leverPivot.add(this.lever);
     this.group.add(this.leverPivot);
 
-    // Safety pin (draggable child with its own hitbox).
-    this.pin = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.07, 10), brass);
+    // Safety pin (draggable child with its own hitbox + invisible grab proxy).
+    this.pin = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.09, 10), brass);
     this.pin.position.set(0.05, 0.1, 0);
     this.pin.rotation.z = Math.PI / 2;
     this.pin.name = 'SafetyPin';
+    this.pinProxy = new THREE.Mesh(
+      new THREE.SphereGeometry(0.045, 8, 8),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    );
+    this.pin.add(this.pinProxy);
     this.group.add(this.pin);
     this._pinHome = this.pin.position.clone();
     this._pinAxis = new THREE.Vector3(1, 0, 0); // local extraction axis
@@ -72,7 +77,10 @@ export class Extinguisher {
 
     this._tipPos = new THREE.Vector3(); this._tipDir = new THREE.Vector3();
     camera.add(this.group);
-    this.group.position.set(0.26, -0.22, -0.55);
+    // Held-item framing: small enough to read as arm's-length, clear of screen center.
+    this.group.scale.setScalar(0.7);
+    this.group.position.set(0.22, -0.17, -0.62);
+    this.group.rotation.y = -0.12;
   }
   on(evt, fn) { (this.handlers[evt] ||= []).push(fn); }
   emit(evt, ...a) { for (const h of this.handlers[evt] || []) h(...a); }
@@ -92,19 +100,28 @@ export class Extinguisher {
   // --- Pin drag API (pointer events routed from main.js) ---
   tryGrabPin(raycaster) {
     if (this.pinPulled || this.fsm.current !== 'PullPin') return false;
-    const hit = raycaster.intersectObject(this.pin, false);
+    const hit = raycaster.intersectObjects([this.pin, this.pinProxy], false);
     if (hit.length) { this._pinGrabbed = true; return true; }
     return false;
   }
-  dragPin(dxPixels, camera) {
+  dragPin(dxPx, dyPx, camera) {
     if (!this._pinGrabbed || this.pinPulled) return;
-    // Map horizontal screen drag onto the pin's world-space extraction axis.
-    const axisWorld = this._pinAxis.clone().applyQuaternion(this.group.getWorldQuaternion(new THREE.Quaternion()));
-    const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
-    const pixelsToMeters = 0.0006; // ~0.6mm per px at typical depth
-    const along = dxPixels * pixelsToMeters * Math.sign(axisWorld.dot(camRight) || 1);
-    if (along > 0) {
-      this._pinDrag = Math.min(this._pinDrag + along, 0.12);
+    // Project the pin's world extraction axis onto the screen: only motion
+    // along the VISIBLE pull direction counts (axis-constrained per spec,
+    // but forgiving of drag angle — not horizontal-pixels-only).
+    const axisWorld = this._pinAxis.clone()
+      .applyQuaternion(this.group.getWorldQuaternion(new THREE.Quaternion())).normalize();
+    const tipA = new THREE.Vector3(); this.pin.getWorldPosition(tipA);
+    const tipB = tipA.clone().addScaledVector(axisWorld, 0.05);
+    const sA = tipA.project(camera);
+    const sB = tipB.project(camera);
+    const dir = new THREE.Vector2(sB.x - sA.x, -(sB.y - sA.y));
+    if (dir.lengthSq() < 1e-10) return;
+    dir.normalize();
+    const alongPx = new THREE.Vector2(dxPx, -dyPx).dot(dir);
+    if (alongPx > 0) {
+      const pixelsToMeters = 0.0006; // ~0.6mm per px at typical depth
+      this._pinDrag = Math.min(this._pinDrag + alongPx * pixelsToMeters, 0.12);
       this.pin.position.copy(this._pinHome).addScaledVector(this._pinAxis, this._pinDrag);
       this.emit('pinProgress', Math.min(this._pinDrag / PIN_THRESHOLD_M, 1));
       if (this._pinDrag >= PIN_THRESHOLD_M) this.breakPin(axisWorld);
@@ -143,6 +160,14 @@ export class Extinguisher {
     // Lever kinematics: rest -> -15° squeezed.
     const target = this.squeezing ? -LEVER_ANGLE : 0;
     this.leverPivot.rotation.z += (target - this.leverPivot.rotation.z) * Math.min(dt * 10, 1);
+
+    // Pulsing highlight on the pin while it is the active task.
+    if (!this.pinPulled) {
+      if (this.fsm.current === 'PullPin') {
+        const s = 0.5 + 0.5 * Math.sin(performance.now() / 180);
+        this.pin.material.emissive.setRGB(0.7 * s, 0.4 * s, 0.05 * s);
+      } else this.pin.material.emissive.setRGB(0, 0, 0);
+    }
 
     // Pin ballistics.
     if (this._pinFlying && this.pin.visible) {

@@ -10,15 +10,25 @@ import { TrainingUI } from './ui.js';
 
 const $ = (id) => document.getElementById(id);
 
+// Surface boot/module errors on-screen (phones have no devtools handy).
+function showFatal(msg) {
+  const box = $('errbox');
+  if (box) { box.classList.remove('hidden'); box.textContent += msg + '\n'; }
+}
+addEventListener('error', (e) => showFatal('Error: ' + (e.message || e.error)));
+addEventListener('unhandledrejection', (e) => showFatal('Promise: ' + (e.reason?.message || e.reason)));
+
 async function boot() {
   const canvas = $('gl');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); // alpha: camera feed shows through in AR
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0b1f3a);
-  scene.fog = new THREE.Fog(0x0b1f3a, 8, 22);
+  const SIM_BG = new THREE.Color(0x0b1f3a);
+  const SIM_FOG = new THREE.Fog(0x0b1f3a, 8, 22);
+  scene.background = SIM_BG;
+  scene.fog = SIM_FOG;
   scene.add(new THREE.HemisphereLight(0xdfeaff, 0x332211, 0.9));
   const sun = new THREE.DirectionalLight(0xffffff, 1.2);
   sun.position.set(3, 6, 2);
@@ -100,8 +110,8 @@ async function boot() {
   });
   addEventListener('pointermove', (e) => {
     if (pinGrab) {
-      ext.dragPin(e.clientX - downX, camera);
-      downX = e.clientX;
+      ext.dragPin(e.clientX - downX, e.clientY - downY, camera);
+      downX = e.clientX; downY = e.clientY;
     }
   });
   addEventListener('pointerup', (e) => {
@@ -134,12 +144,26 @@ async function boot() {
     const ok = await look.enableGyro();
     $('btnGyro').textContent = ok ? '📳 Gyro look ON' : '⚠️ Gyro blocked';
   });
-  if (await ARSession.xrSupported()) {
+  // AR check with a timeout: a wedged XR service must not hang the UI forever.
+  const xrOK = await Promise.race([
+    ARSession.xrSupported(),
+    new Promise((res) => setTimeout(() => res('timeout'), 4000)),
+  ]);
+  if (xrOK === true) {
     $('btnXR').classList.remove('hidden');
     $('btnXR').addEventListener('click', async () => {
       try {
         audio.ensure();
-        await session.enterXR(() => ui.setMode('sim'));
+        await session.enterXR(() => {
+          // Back to simulation visuals.
+          scene.background = SIM_BG; scene.fog = SIM_FOG;
+          floor.visible = true; grid.visible = true;
+          ui.setMode('sim');
+        });
+        // AR visuals: transparent canvas + hide the virtual room.
+        renderer.setClearColor(0x000000, 0);
+        scene.background = null; scene.fog = null;
+        floor.visible = false; grid.visible = false;
         overlay.classList.add('hidden');
         ui.setMode('xr');
       } catch (err) {
@@ -147,7 +171,9 @@ async function boot() {
       }
     });
   } else {
-    $('xrNote').textContent = 'AR (WebXR) not available here — use Simulation. (Android Chrome + HTTPS required for real AR.)';
+    $('xrNote').textContent = xrOK === 'timeout'
+      ? '⚠️ AR check timed out (ARCore may be stuck — force-close Chrome and retry). Simulation works regardless.'
+      : 'AR (WebXR) not available here — use Simulation. (Android Chrome + HTTPS required for real AR.)';
   }
   if (!window.isSecureContext) $('xrNote').textContent = '⚠️ Not a secure context — serve over HTTPS or localhost.';
 

@@ -19,6 +19,7 @@ export class ParticlePool {
     const m = new THREE.PointsMaterial({
       size, vertexColors: true, transparent: true, opacity,
       blending, depthWrite: false, sizeAttenuation: true,
+      map: ParticlePool.softSprite(), alphaTest: 0.01,
     });
     this.points = new THREE.Points(g, m);
     this.points.frustumCulled = false;
@@ -69,4 +70,21 @@ export class ParticlePool {
     }
   }
   set visible(v) { this.points.visible = v; }
+
+  // Shared soft round sprite so particles render as puffs, not squares.
+  static softSprite() {
+    if (this._sprite) return this._sprite;
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.55)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    const tex = new THREE.CanvasTexture(c);
+    this._sprite = tex;
+    return tex;
+  }
 }
