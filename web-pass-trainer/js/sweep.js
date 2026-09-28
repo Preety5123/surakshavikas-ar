@@ -8,7 +8,7 @@ export const Zone = Object.freeze({ None: 0, Left: 1, Center: 2, Right: 3 });
 export class SweepTracker {
   constructor({
     minRate = 0.4, maxRate = 2.0, windowS = 2.5,
-    halfWidthM = 0.45, damagePerSecond = 25,
+    halfWidthM = 0.45, damagePerSecond = 40,
   } = {}) {
     this.minRate = minRate; this.maxRate = maxRate;
     this.windowS = windowS; this.halfWidthM = halfWidthM;

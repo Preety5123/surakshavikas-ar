@@ -12,6 +12,7 @@
 <body>
 <canvas id="gl"></canvas>
 
+<div id="overlay">
 <div id="hud">
   <div id="modeBadge">🧪 SIMULATION — Training Only</div>
   <div id="warn" class="hidden"><span id="warnText"></span></div>
@@ -36,11 +37,12 @@
   <p>The fire is still burning.<br>Replay to try again.</p>
   <button onclick="location.reload()">🔁 Retry</button>
 </div>
+</div>
 
 <div id="start">
   <div class="card">
     <h1>🧯 P.A.S.S. Trainer</h1>
-    <p><b>P</b>ull • <b>A</b>im • <b>S</b>queeze • <b>S</b>weep</p>
+    <p><b>P</b>ull • <b>A</b>im • <b>S</b>queeze • <b>S</b>weep <span id="ver">build 12</span></p>
     <p id="xrNote">Checking AR support…</p>
     <button id="btnXR" class="hidden">📷 Enter AR (Android Chrome)</button>
     <button id="btnSim">🧪 Simulation mode (any device)</button>
@@ -49,6 +51,6 @@
   </div>
 </div>
 
-<script type="module" src="./js/main.js?v=4"></script>
+<script type="module" src="./js/main.js?v=12"></script>
 </body>
 </html>

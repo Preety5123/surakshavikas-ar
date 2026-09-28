@@ -28,8 +28,12 @@ export class ARSession {
   }
 
   async enterXR(onEnd) {
+    // dom-overlay keeps our HUD (bars, hints, squeeze) visible inside the
+    // immersive session — without it the browser shows only the WebGL layer.
     const session = await navigator.xr.requestSession('immersive-ar', {
       requiredFeatures: ['hit-test', 'local-floor'],
+      optionalFeatures: ['dom-overlay', 'light-estimation'],
+      domOverlay: { root: document.getElementById('overlay') },
     });
     this.mode = 'xr';
     this.renderer.xr.enabled = true;
@@ -55,6 +59,8 @@ export class ARSession {
   }
 
   setFire(fire) { this.fire = fire; }
+
+  hasHit() { return !!this._lastHit; }
 
   // Screen tap during Placement (XR select already handled; sim taps come here).
   tryPlaceFromScreen(x, y, raycaster, floorMesh) {

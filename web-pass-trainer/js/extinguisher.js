@@ -9,6 +9,7 @@ const PRESSURE_SECONDS = 12;
 export class Extinguisher {
   constructor(scene, camera, fsm, audio, tracker) {
     this.fsm = fsm; this.audio = audio; this.tracker = tracker;
+    this.camera = camera;
     this.pressureLeft = PRESSURE_SECONDS;
     this.squeezing = false; this.spraying = false;
     this.failed = false;
@@ -38,15 +39,25 @@ export class Extinguisher {
     this.group.add(this.leverPivot);
 
     // Safety pin (draggable child with its own hitbox + invisible grab proxy).
-    this.pin = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.09, 10), brass);
-    this.pin.position.set(0.05, 0.1, 0);
+    // Oversized deliberately: at phone scale a realistic pin is untappable.
+    this.pin = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.1, 10), brass);
+    this.pin.position.set(0.06, 0.1, 0);
     this.pin.rotation.z = Math.PI / 2;
     this.pin.name = 'SafetyPin';
     this.pinProxy = new THREE.Mesh(
-      new THREE.SphereGeometry(0.045, 8, 8),
+      new THREE.SphereGeometry(0.05, 8, 8),
       new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
     );
     this.pin.add(this.pinProxy);
+    // Red pull-ring at the pin's outer end: the visible "grab me" affordance.
+    // (Pin is z-rotated, so parent +X extraction dir == pin-local -Y.)
+    this.pinRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.024, 0.007, 8, 20),
+      new THREE.MeshStandardMaterial({ color: 0xd92d20, roughness: 0.5 })
+    );
+    this.pinRing.position.set(0, -0.058, 0);
+    this.pinRing.rotation.x = Math.PI / 2;
+    this.pin.add(this.pinRing);
     this.group.add(this.pin);
     this._pinHome = this.pin.position.clone();
     this._pinAxis = new THREE.Vector3(1, 0, 0); // local extraction axis
@@ -77,10 +88,22 @@ export class Extinguisher {
 
     this._tipPos = new THREE.Vector3(); this._tipDir = new THREE.Vector3();
     camera.add(this.group);
-    // Held-item framing: small enough to read as arm's-length, clear of screen center.
-    this.group.scale.setScalar(0.7);
-    this.group.position.set(0.22, -0.17, -0.62);
+    this.updateFraming(innerWidth / innerHeight);
     this.group.rotation.y = -0.12;
+  }
+
+  // Aspect-aware viewmodel framing: hold the model at a fixed depth and place
+  // it at fractions of the visible half-extents (capped), so it stays inside
+  // safe bounds on portrait, landscape, and wide-FOV passthrough alike.
+  updateFraming(aspect, vfovDeg = 60, depth = 0.7) {
+    const halfH = Math.tan(THREE.MathUtils.degToRad(vfovDeg) / 2) * depth;
+    const halfW = halfH * aspect;
+    this.group.scale.setScalar(0.55);
+    this.group.position.set(
+      Math.min(halfW * 0.62, 0.3),
+      -Math.min(halfH * 0.52, 0.24),
+      -depth
+    );
   }
   on(evt, fn) { (this.handlers[evt] ||= []).push(fn); }
   emit(evt, ...a) { for (const h of this.handlers[evt] || []) h(...a); }
@@ -98,10 +121,40 @@ export class Extinguisher {
   }
 
   // --- Pin drag API (pointer events routed from main.js) ---
-  tryGrabPin(raycaster) {
+  // Primary: screen-space proximity (deterministic under XR cameras).
+  // Fallback: classic raycast. `cam` must be the camera that rendered the
+  // current frame (the XR view camera while presenting, else the main camera).
+  tryGrabPin(raycaster, xPx, yPx, cam = null) {
     if (this.pinPulled || this.fsm.current !== 'PullPin') return false;
-    const hit = raycaster.intersectObjects([this.pin, this.pinProxy], false);
-    if (hit.length) { this._pinGrabbed = true; return true; }
+    const view = cam || this.camera;
+    const p = new THREE.Vector3();
+    this.pin.getWorldPosition(p);
+    p.project(view);
+    let grabbed = false;
+    let dbg = 'n/a';
+    if (p.z < 1) {
+      const sx = (p.x * 0.5 + 0.5) * innerWidth;
+      const sy = (-p.y * 0.5 + 0.5) * innerHeight;
+      const dPx = Math.hypot(xPx - sx, yPx - sy);
+      dbg = `pin(${sx.toFixed(0)},${sy.toFixed(0)}) touch(${xPx.toFixed(0)},${yPx.toFixed(0)}) d=${dPx.toFixed(0)}`;
+      this.emit('pinDebug', dbg);
+      if (dPx < 70) grabbed = true;
+    } else {
+      this.emit('pinDebug', 'pin behind camera');
+    }
+    if (!grabbed) {
+      const hit = raycaster.intersectObjects([this.pin, this.pinProxy], false);
+      if (hit.length) grabbed = true;
+    }
+    if (!grabbed) {
+      // Generous fallback: touching ANY part of the extinguisher grabs the pin.
+      // The training-relevant skill (axis-constrained drag past 5cm) is unchanged;
+      // only the touch target is forgiving at phone scale.
+      const hitBody = raycaster.intersectObject(this.group, true);
+      if (hitBody.length) grabbed = true;
+    }
+    if (grabbed) { this._pinGrabbed = true; this.emit('pinGrabbed'); return true; }
+    this.emit('pinMiss');
     return false;
   }
   dragPin(dxPx, dyPx, camera) {
@@ -120,7 +173,7 @@ export class Extinguisher {
     dir.normalize();
     const alongPx = new THREE.Vector2(dxPx, -dyPx).dot(dir);
     if (alongPx > 0) {
-      const pixelsToMeters = 0.0006; // ~0.6mm per px at typical depth
+      const pixelsToMeters = 0.0009; // ~50px of on-axis drag breaks the 5cm pin
       this._pinDrag = Math.min(this._pinDrag + alongPx * pixelsToMeters, 0.12);
       this.pin.position.copy(this._pinHome).addScaledVector(this._pinAxis, this._pinDrag);
       this.emit('pinProgress', Math.min(this._pinDrag / PIN_THRESHOLD_M, 1));
@@ -128,11 +181,8 @@ export class Extinguisher {
     }
   }
   releasePin() {
-    if (this._pinGrabbed && !this.pinPulled) {
-      this._pinGrabbed = false; this._pinDrag = 0;
-      this.pin.position.copy(this._pinHome);
-      this.emit('pinProgress', 0);
-    }
+    // Keep partial progress across grabs (no snap-back): only a full 5cm pull breaks the pin.
+    this._pinGrabbed = false;
   }
   breakPin(axisWorld) {
     this._pinGrabbed = false; this.pinPulled = true;

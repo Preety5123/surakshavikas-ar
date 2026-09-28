@@ -20,6 +20,17 @@ export class FireHazard {
     this.baseMesh.position.y = 0.03;
     this.baseMesh.userData.tag = 'FireBase';
     this.baseMesh.name = 'FireBase';
+    this.baseMesh.castShadow = true;
+
+    // Transparent shadow-catcher so the fire sits grounded on the real floor.
+    this.shadowCatcher = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.4, 2.4),
+      new THREE.ShadowMaterial({ opacity: 0.35 })
+    );
+    this.shadowCatcher.rotation.x = -Math.PI / 2;
+    this.shadowCatcher.position.y = 0.004;
+    this.shadowCatcher.receiveShadow = true;
+    this.group.add(this.shadowCatcher);
 
     // Segment 2: FireUpper — capsule of rising flames/smoke (aiming feedback only).
     this.upperMesh = new THREE.Mesh(
@@ -99,7 +110,8 @@ export class FireHazard {
     }
 
     // Damage intake: spray particles inside the base cylinder volume.
-    const R = 0.45, baseY = o.y;
+    // (Base geometry radius 0.45 × group scale 0.8.)
+    const R = 0.36, baseY = o.y;
     for (const pt of sprayPts) {
       const dx = pt.x - o.x, dz = pt.z - o.z, dy = pt.y - baseY;
       if (dx * dx + dz * dz < R * R && dy > -0.1 && dy < 0.8) {

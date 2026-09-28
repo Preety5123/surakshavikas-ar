@@ -23,6 +23,8 @@ async function boot() {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); // alpha: camera feed shows through in AR
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
   const SIM_BG = new THREE.Color(0x0b1f3a);
@@ -32,6 +34,12 @@ async function boot() {
   scene.add(new THREE.HemisphereLight(0xdfeaff, 0x332211, 0.9));
   const sun = new THREE.DirectionalLight(0xffffff, 1.2);
   sun.position.set(3, 6, 2);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.camera.left = -5; sun.shadow.camera.right = 5;
+  sun.shadow.camera.top = 5; sun.shadow.camera.bottom = -5;
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 20;
+  sun.shadow.bias = -0.0005;
   scene.add(sun);
 
   // Camera rig (works for both XR-driven and simulated cameras).
@@ -71,10 +79,25 @@ async function boot() {
 
   let fire = null;
   const raycaster = new THREE.Raycaster();
-  const sprayPts = [];
+  // Camera that rendered the current frame: XR view camera while presenting
+  // (the user camera's projection is stale in AR), else the main camera.
+  const viewCam = () => {
+    if (renderer.xr.isPresenting) {
+      const views = renderer.xr.getCamera().cameras;
+      if (views && views.length) {
+        const v = views[0];
+        v.updateMatrixWorld();
+        v.matrixWorldInverse.copy(v.matrixWorld).invert();
+        return v;
+      }
+    }
+    return camera;
+  };  const sprayPts = [];
   const camQ = new THREE.Quaternion();
   const clock = new THREE.Clock();
-  let lastWarn = 0; let lastTooClose = null;
+  let lastWarn = 0; let lastTooClose = null; let lastPinMiss = -10;
+  let pinDbg = '-';
+  ext.on('pinDebug', (s) => { pinDbg = s; });
   // ?debug=1 overlay: live gate readout (state, spray, aim, yaw, sweep, zones, hp, pressure).
   const debugEl = $('debug');
   let debugTick = 0;
@@ -85,6 +108,7 @@ async function boot() {
     if (fire || fsm.current !== TrainerState.Placement) return;
     fire = new FireHazard(scene, audio);
     fire.setPosition(pos);
+    fire.group.scale.setScalar(0.8);
     session.setFire(fire);
     audio.ensure(); audio.startFire();
     fsm.notifyPlaced();
@@ -93,7 +117,7 @@ async function boot() {
       fsm.notifyExtinguished();
       ui.showSuccess(m, ext.pressure01, ext.aimAccuracy);
     });
-    $('hint').textContent = 'Drag the brass pin straight out →';
+    $('hint').textContent = 'Touch the red ring, drag it straight out →';
   });
 
   // Pointer: pin drag vs look vs tap-to-place.
@@ -103,14 +127,16 @@ async function boot() {
     audio.ensure();
     downX = e.clientX; downY = e.clientY; lookDrag = true;
     if (fsm.current === TrainerState.PullPin && !fire?.finished) {
+      const vc = viewCam();
       ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-      raycaster.setFromCamera(ndc, camera);
-      pinGrab = ext.tryGrabPin(raycaster);
+      raycaster.setFromCamera(ndc, vc);
+      pinGrab = ext.tryGrabPin(raycaster, e.clientX, e.clientY, vc);
+      if (!pinGrab) lastPinMiss = performance.now() / 1000;
     }
   });
   addEventListener('pointermove', (e) => {
     if (pinGrab) {
-      ext.dragPin(e.clientX - downX, e.clientY - downY, camera);
+      ext.dragPin(e.clientX - downX, e.clientY - downY, viewCam());
       downX = e.clientX; downY = e.clientY;
     }
   });
@@ -164,6 +190,7 @@ async function boot() {
         renderer.setClearColor(0x000000, 0);
         scene.background = null; scene.fog = null;
         floor.visible = false; grid.visible = false;
+        ext.updateFraming(innerWidth / innerHeight);
         overlay.classList.add('hidden');
         ui.setMode('xr');
       } catch (err) {
@@ -181,6 +208,7 @@ async function boot() {
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
+    ext.updateFraming(innerWidth / innerHeight);
   });
 
   // Main loop (setAnimationLoop is required for WebXR).
@@ -205,8 +233,13 @@ async function boot() {
     }
     ui.tickPressure(ext.pressure01);
     // Contextual coaching: tell the user exactly which gate is blocking damage.
-    if (fire && !fire.finished && (fsm.current === 'SqueezeLever' || fsm.current === 'SweepMotion')) {
-      const hintEl = $('hint');
+    if (fsm.current === 'Placement' && session.mode === 'xr') {
+      $('hint').textContent = session.hasHit()
+        ? '✅ Floor found — tap the green ring to place the fire!'
+        : '📷 Scan the floor: tilt phone down, move slowly side-to-side…';
+    } else if (fsm.current === 'PullPin' && performance.now() / 1000 - lastPinMiss < 2.5) {
+      $('hint').textContent = '🎯 Touch the red ring on the extinguisher, then drag outward.';
+    } else if (fire && !fire.finished && (fsm.current === 'SqueezeLever' || fsm.current === 'SweepMotion')) {      const hintEl = $('hint');
       if (ext.spraying && ext.aimingAtBase && !tracker.valid) {
         hintEl.textContent = '🧯 Spraying — now SWEEP side-to-side! Holding still will not put it out.';
       } else if (ext.spraying && ext.aimingAtBase && tracker.valid && tracker.zonesCovered().size < 3) {
@@ -221,7 +254,7 @@ async function boot() {
         debugEl.textContent =
           `state=${fsm.current} spray=${ext.spraying ? 1 : 0} aimBase=${ext.aimingAtBase ? 1 : 0} ` +
           `yaw=${tracker.yawRate.toFixed(2)} sweepOK=${tracker.valid ? 1 : 0} zones=[${zones}] ` +
-          `hp=${fire ? fire.health.toFixed(0) : '-'} press=${ext.pressure01.toFixed(2)}`;
+          `hp=${fire ? fire.health.toFixed(0) : '-'} press=${ext.pressure01.toFixed(2)}\n${pinDbg}`;
       }
     }
     renderer.render(scene, camera);
