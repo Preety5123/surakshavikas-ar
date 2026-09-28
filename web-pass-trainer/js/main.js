@@ -68,7 +68,7 @@ async function boot() {
   const audio = new SynthAudio();
   const tracker = new SweepTracker();
   const session = new ARSession(renderer, scene, camera, fsm);
-  const look = new SimLook(camera, canvas);
+  const look = new SimLook(camera, canvas, renderer);
   const ext = new Extinguisher(scene, camera, fsm, audio, tracker);
   const ui = new TrainingUI(fsm);
   ui.bind({
@@ -98,6 +98,9 @@ async function boot() {
   let lastWarn = 0; let lastTooClose = null; let lastPinMiss = -10;
   let pinDbg = '-';
   ext.on('pinDebug', (s) => { pinDbg = s; });
+  // Sim camera pose, saved/restored around XR sessions so the scene-graph
+  // camera matches the tracked pose 1:1 while presenting (dolly compliance).
+  const simCamPos = new THREE.Vector3(); const simCamQuat = new THREE.Quaternion();
   // ?debug=1 overlay: live gate readout (state, spray, aim, yaw, sweep, zones, hp, pressure).
   const debugEl = $('debug');
   let debugTick = 0;
@@ -184,11 +187,15 @@ async function boot() {
       try {
         audio.ensure();
         await session.enterXR(() => {
-          // Back to simulation visuals.
+          // Back to simulation visuals + pose.
+          camera.position.copy(simCamPos); camera.quaternion.copy(simCamQuat);
           scene.background = SIM_BG; scene.fog = SIM_FOG;
           floor.visible = true; grid.visible = true;
           ui.setMode('sim');
         });
+        // XR owns the camera: identity local pose so logic and render agree.
+        simCamPos.copy(camera.position); simCamQuat.copy(camera.quaternion);
+        camera.position.set(0, 0, 0); camera.quaternion.identity();
         // AR visuals: transparent canvas + hide the virtual room.
         renderer.setClearColor(0x000000, 0);
         scene.background = null; scene.fog = null;

@@ -97,9 +97,11 @@ export class ARSession {
 }
 
 // Simulation look controls: drag-to-look (all) + gyro look (mobile, after permission).
+// Never touches the camera while an XR session is presenting (XR owns the pose;
+// writing stale sim rotation would offset the whole virtual world from tracking).
 export class SimLook {
-  constructor(camera, dom) {
-    this.camera = camera; this.dom = dom;
+  constructor(camera, dom, renderer = null) {
+    this.camera = camera; this.dom = dom; this.renderer = renderer;
     this.yaw = 0; this.pitch = -0.15;
     this.gyro = false; this._alpha0 = null;
     this._dragging = false; this._lx = 0; this._ly = 0;
@@ -129,6 +131,7 @@ export class SimLook {
     } catch { return false; }
   }
   update() {
+    if (this.renderer && this.renderer.xr.isPresenting) return; // XR drives the camera
     if (this.gyro) return; // orientation handler drives yaw/pitch directly
     this.camera.rotation.set(0, 0, 0);
     this.camera.rotateY(this.yaw);

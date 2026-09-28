@@ -8,7 +8,7 @@ export const Zone = Object.freeze({ None: 0, Left: 1, Center: 2, Right: 3 });
 export class SweepTracker {
   constructor({
     minRate = 0.4, maxRate = 2.0, windowS = 2.5,
-    halfWidthM = 0.45, damagePerSecond = 40,
+    halfWidthM = 0.45, damagePerSecond = 100,
   } = {}) {
     this.minRate = minRate; this.maxRate = maxRate;
     this.windowS = windowS; this.halfWidthM = halfWidthM;
@@ -53,10 +53,14 @@ export class SweepTracker {
     return Zone.Center;
   }
 
-  // Records one spray impact. Returns true if the impact counted (gates passed).
-  // Damage itself is granted once per frame via damageForFrame(dt).
+  // Records one spray impact. Zones are recorded on spray+aim contact alone;
+  // DAMAGE additionally requires live sweep motion (see damageForFrame).
+  // Rationale: at sweep turnarounds the yaw rate legitimately passes through
+  // ~0 just as the spray dwells on the edge zones — rejecting those hits
+  // starves coverage forever. Static holding still deals zero damage because
+  // it can only ever cover one zone AND damage needs valid motion.
   registerImpact(fireGroup, worldPoint) {
-    if (!this.spraying || !this.aimingAtBase || !this.valid) return false;
+    if (!this.spraying || !this.aimingAtBase) return false;
     const zone = this.classify(fireGroup, worldPoint);
     if (zone === Zone.None) return false;
     const now = performance.now() / 1000;
