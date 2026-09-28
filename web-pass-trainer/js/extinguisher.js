@@ -153,6 +153,12 @@ export class Extinguisher {
       const hitBody = raycaster.intersectObject(this.group, true);
       if (hitBody.length) grabbed = true;
     }
+    if (!grabbed) {
+      // Last resort (XR view-camera projection untrustworthy on some devices):
+      // the viewmodel is framed bottom-right by construction, so a touch in
+      // the lower-right region during PullPin counts as grabbing the pin.
+      if (xPx > innerWidth * 0.5 && yPx > innerHeight * 0.45) grabbed = true;
+    }
     if (grabbed) { this._pinGrabbed = true; this.emit('pinGrabbed'); return true; }
     this.emit('pinMiss');
     return false;
@@ -169,9 +175,16 @@ export class Extinguisher {
     const sA = tipA.project(camera);
     const sB = tipB.project(camera);
     const dir = new THREE.Vector2(sB.x - sA.x, -(sB.y - sA.y));
-    if (dir.lengthSq() < 1e-10) return;
-    dir.normalize();
-    const alongPx = new THREE.Vector2(dxPx, -dyPx).dot(dir);
+    let alongPx;
+    if (dir.lengthSq() < 1e-10 || !isFinite(dir.x + dir.y)) {
+      // Projection degenerate on this device: fall back to raw drag distance
+      // so sustained dragging still progresses (axis constraint best-effort).
+      alongPx = Math.hypot(dxPx, dyPx);
+      if (alongPx < 2) return; // ignore jitter
+    } else {
+      dir.normalize();
+      alongPx = new THREE.Vector2(dxPx, -dyPx).dot(dir);
+    }
     if (alongPx > 0) {
       const pixelsToMeters = 0.0009; // ~50px of on-axis drag breaks the 5cm pin
       this._pinDrag = Math.min(this._pinDrag + alongPx * pixelsToMeters, 0.12);

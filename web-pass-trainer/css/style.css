@@ -1,4 +1,5 @@
-*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui;background:#0B1F3A;color:#fff}
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;font-family:system-ui;background:#0B1F3A;color:#fff;overscroll-behavior:none}
+#overlay{touch-action:none;user-select:none;-webkit-user-select:none}
 #gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
 #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
 #modeBadge{position:absolute;top:8px;left:8px;background:rgba(11,31,58,.85);padding:6px 10px;border-radius:8px;font-size:12px;font-weight:700}

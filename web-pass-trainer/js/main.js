@@ -121,9 +121,12 @@ async function boot() {
   });
 
   // Pointer: pin drag vs look vs tap-to-place.
+  // Listened on WINDOW (not canvas): inside an immersive-ar session with DOM
+  // overlay active, the canvas is not guaranteed to be the touch target.
   const ndc = new THREE.Vector2();
   let downX = 0, downY = 0, pinGrab = false, lookDrag = false;
-  canvas.addEventListener('pointerdown', (e) => {
+  addEventListener('pointerdown', (e) => {
+    if (e.target?.closest?.('button')) return; // HUD buttons handle themselves
     audio.ensure();
     downX = e.clientX; downY = e.clientY; lookDrag = true;
     if (fsm.current === TrainerState.PullPin && !fire?.finished) {
